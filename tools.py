@@ -3,11 +3,7 @@ import os
 import requests
 from datetime import date
 from statistics import mode, StatisticsError
-from mcp.server.fastmcp import FastMCP
 from langchain_core.tools import tool
-
-mcp = FastMCP("savey_tools")
-
 
 @tool
 def retrieve_total_expenses(text: str) -> str:
@@ -38,14 +34,14 @@ def retrieve_purchased_item(text: str) -> str:
 
 
 def _fetch_rate(currency: str, date: str) -> float:
-    """Calls Frankfurter API to collect most recent exchange rates to GBP. Raises ValueError for unrecognised currency codes."""
+    """Calls Frankfurter API to collect most recent exchange rates to GBP."""
     frankfurter_url = f"https://api.frankfurter.dev/v2/rates?base={currency}&quotes=GBP"
     if date:
         frankfurter_url += f"&date={date}"
     response = requests.get(frankfurter_url)
     data = response.json()
     if "status" in data:
-        return data["message"]
+        raise ValueError(data["message"])
     return data[0]["rate"]
 
 
@@ -74,6 +70,3 @@ def get_today_date() -> str:
     """
     return date.today().strftime("%A, %d %B %Y")
 
-
-if __name__ == "__main__":
-    mcp.run(transport="stdio")
