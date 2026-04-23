@@ -8,7 +8,12 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import ToolNode
 
 from state import SaveyState
-from tools import retrieve_total_expenses, retrieve_purchased_item, convert_to_gbp
+from tools import (
+    retrieve_total_expenses,
+    retrieve_purchased_item,
+    convert_to_gbp,
+    get_today_date,
+)
 from agents import ask_duration_agent
 
 load_dotenv()
@@ -20,6 +25,7 @@ SAVEY_TOOLS = [
     retrieve_purchased_item,
     ask_duration_agent,
     convert_to_gbp,
+    get_today_date,
     # savings_recommendation will be added here once teammate implements the tool
 ]
 
@@ -34,7 +40,10 @@ Tool usage rules:
 - retrieve_total_expenses: ONLY call this when the user mentions GBP (£) amounts. Do NOT call this if the message contains USD ($), EUR, or any other foreign currency — use convert_to_gbp instead.
 - retrieve_purchased_item: ALWAYS call this when the user mentions buying an item
 - ask_duration_agent: ALWAYS call this when the user mentions ANY time reference such as today, yesterday, last Monday, or any specific day
-- convert_to_gbp: ALWAYS call this immediately and automatically when the user mentions any non-GBP amount. Do NOT ask for confirmation — just convert it.
+- get_today_date: a tool that returns today's date — use it to resolve relative references like 'last Monday' or 'three days ago', before passing to convert_to_gbp.
+Returns in the format "Full weekday name, dd Month-Name yyyy" (e.g. Monday, 01 January 2024). Must be sent to convert_to_gbp in the format yyyy-mm-dd.
+- convert_to_gbp: for converting foreign currency amounts — use this BEFORE retrieve_total_expenses if the currency is not GBP. Each conversion might require different
+rates depending which day the user is referring to, so make sure that for each monetary value and date pairing, a new date is sent to this tool.
 General rules:
 - Do not call tools for unrelated conversation
 - Do not call every tool automatically
@@ -48,17 +57,19 @@ ADVICE MODE: If the user asks for 'advice', 'recommendations', or 'how they are 
 
 # ── Model ─────────────────────────────────────────────────────────────────────
 
+
 def _make_model(temperature: float = 0.0):
     return init_chat_model(
         model="openai/gpt-4.1",
         model_provider="openai",
         api_key=os.getenv("OPENROUTER_API_KEY"),
         base_url="https://openrouter.ai/api/v1",
-        temperature=temperature
+        temperature=temperature,
     )
 
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
+
 
 def agent_node(state: SaveyState) -> dict:
     model = _make_model()
@@ -101,17 +112,19 @@ def update_state_node(state: SaveyState) -> dict:
     messages = state["messages"]
 
     last_ai_idx = next(
-        (i for i in reversed(range(len(messages)))
-         if isinstance(messages[i], AIMessage) and messages[i].tool_calls),
-        None
+        (
+            i
+            for i in reversed(range(len(messages)))
+            if isinstance(messages[i], AIMessage) and messages[i].tool_calls
+        ),
+        None,
     )
 
     if last_ai_idx is None:
         return {}
 
     current_tool_messages = [
-        m for m in messages[last_ai_idx + 1:]
-        if isinstance(m, ToolMessage)
+        m for m in messages[last_ai_idx + 1 :] if isinstance(m, ToolMessage)
     ]
 
     if not current_tool_messages:
@@ -124,21 +137,24 @@ def update_state_node(state: SaveyState) -> dict:
         content = msg.content.strip()
 
         if msg.name == "convert_to_gbp":
-            fx_match = re.search(r'= £([\d.]+) GBP', content)
+            fx_match = re.search(r"= £([\d.]+) GBP", content)
             if fx_match:
-                expense_log.append({
-                    "item": "(foreign currency expense)",
-                    "amount_gbp": float(fx_match.group(1))
-                })
+                expense_log.append(
+                    {
+                        "item": "(foreign currency expense)",
+                        "amount_gbp": float(fx_match.group(1)),
+                    }
+                )
 
-        elif msg.name == "retrieve_total_expenses" and not currency_converted_this_round:
+        elif (
+            msg.name == "retrieve_total_expenses" and not currency_converted_this_round
+        ):
             try:
                 amount_gbp = float(content)
                 if amount_gbp > 0:
-                    expense_log.append({
-                        "item": "(expenses from message)",
-                        "amount_gbp": amount_gbp
-                    })
+                    expense_log.append(
+                        {"item": "(expenses from message)", "amount_gbp": amount_gbp}
+                    )
             except (ValueError, TypeError):
                 pass
 
@@ -166,6 +182,7 @@ def should_continue(state: SaveyState) -> str:
 
 
 # ── Graph assembly ────────────────────────────────────────────────────────────
+
 
 def build_savey_graph(checkpointer=None):
     if checkpointer is None:

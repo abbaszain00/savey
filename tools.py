@@ -1,20 +1,12 @@
 import re
 import os
+import requests
 from datetime import date
 from statistics import mode, StatisticsError
 from mcp.server.fastmcp import FastMCP
 from langchain_core.tools import tool
 
 mcp = FastMCP("savey_tools")
-
-MOCK_EXCHANGE_RATES = {
-    "USD": 0.79,
-    "EUR": 0.85,
-    "JPY": 0.0053,
-    "CAD": 0.58,
-    "AUD": 0.51,
-    "CHF": 0.89,
-}
 
 
 @tool
@@ -25,7 +17,7 @@ def retrieve_total_expenses(text: str) -> str:
     Use convert_to_gbp first for any non-GBP currency.
     Returns 0.0 if no amounts are found.
     """
-    matches = re.findall(r'£(\d+(?:\.\d+)?)', text)
+    matches = re.findall(r"£(\d+(?:\.\d+)?)", text)
     return str(round(sum(float(x) for x in matches), 2))
 
 
@@ -36,7 +28,7 @@ def retrieve_purchased_item(text: str) -> str:
     If all items appear equally often, returns the last item mentioned.
     Returns 'unknown' if no items can be parsed.
     """
-    matches = re.findall(r'[£$]\d+(?:\.\d+)?\s+(\w+)', text)
+    matches = re.findall(r"[£$]\d+(?:\.\d+)?\s+(\w+)", text)
     if not matches:
         return "unknown"
     try:
@@ -45,20 +37,32 @@ def retrieve_purchased_item(text: str) -> str:
         return matches[-1]
 
 
+def _fetch_rate(currency: str, date: str) -> float:
+    """Calls Frankfurter API to collect most recent exchange rates to GBP. Raises ValueError for unrecognised currency codes."""
+    frankfurter_url = f"https://api.frankfurter.dev/v2/rates?base={currency}&quotes=GBP"
+    if date:
+        frankfurter_url += f"&date={date}"
+    response = requests.get(frankfurter_url)
+    data = response.json()
+    if "status" in data:
+        return data["message"]
+    return data[0]["rate"]
+
+
 @tool
-def convert_to_gbp(amount: float, currency: str) -> str:
+def convert_to_gbp(amount: float, currency: str, date: str) -> str:
     """
     Convert a foreign currency amount to GBP.
     Use this whenever an expense is not already in GBP (£).
     Supported currencies: USD, EUR, JPY, CAD, AUD, CHF.
     Example: convert_to_gbp(20.0, 'USD') → '20.0 USD = £15.8 GBP'
     """
-    currency = currency.upper()
-    if currency not in MOCK_EXCHANGE_RATES:
-        return f"Could not convert: Unrecognised currency code: {currency}. Please use one of: {', '.join(MOCK_EXCHANGE_RATES.keys())}"
-    rate = MOCK_EXCHANGE_RATES[currency]
-    converted = round(amount * rate, 2)
-    return f"{amount} {currency} = £{converted} GBP"
+    try:
+        rate = _fetch_rate(currency, date)
+        converted = round(amount * rate, 2)
+        return f"{amount} {currency.upper()} = £{converted} GBP"
+    except ValueError as e:
+        return f"Could not convert: {e}"
 
 
 @tool
