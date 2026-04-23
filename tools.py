@@ -17,14 +17,15 @@ MOCK_EXCHANGE_RATES = {
 }
 
 
-@tool()
+@tool
 def retrieve_total_expenses(text: str) -> str:
     """
-    Parse a natural language expense message and return the total amount as a float.
-    Handles GBP (£) and USD ($) amounts, including decimals (e.g. £4.50, $20.99).
+    Parse a natural language expense message and return the total GBP amount.
+    Handles GBP (£) amounts only, including decimals (e.g. £4.50).
+    Use convert_to_gbp first for any non-GBP currency.
     Returns 0.0 if no amounts are found.
     """
-    matches = re.findall(r'[£$](\d+(?:\.\d+)?)', text)
+    matches = re.findall(r'£(\d+(?:\.\d+)?)', text)
     return str(round(sum(float(x) for x in matches), 2))
 
 

@@ -28,14 +28,20 @@ SAVEY_TOOLS = [
 
 AGENT_SYSTEM_PROMPT = """You are Savey 💾 — a helpful, precise personal expense tracking assistant.
 
-You have access to these tools:
-- retrieve_total_expenses: sum GBP/USD amounts from text (handles decimals like £4.50)
-- retrieve_purchased_item: identify the most frequently bought item
-- ask_duration_agent: determine how many distinct days a description spans — ALWAYS call this when the user mentions ANY time reference such as today, yesterday, last Monday, or any specific day
-- convert_to_gbp: convert a foreign currency to GBP — ALWAYS use this before retrieve_total_expenses if the expense is not in GBP
-Rules:
-1. Always use ask_duration_agent for any duration or time-period question
-2. For summaries or totals, read from the state shown below — do NOT recalculate
+Use tools only when required by the user's request.
+
+Tool usage rules:
+- retrieve_total_expenses: ONLY call this when the user mentions GBP (£) amounts. Do NOT call this if the message contains USD ($), EUR, or any other foreign currency — use convert_to_gbp instead.
+- retrieve_purchased_item: ALWAYS call this when the user mentions buying an item
+- ask_duration_agent: ALWAYS call this when the user mentions ANY time reference such as today, yesterday, last Monday, or any specific day
+- convert_to_gbp: ALWAYS call this immediately and automatically when the user mentions any non-GBP amount. Do NOT ask for confirmation — just convert it.
+General rules:
+- Do not call tools for unrelated conversation
+- Do not call every tool automatically
+- For summaries or totals, read from the state below — do NOT recalculate
+- If the message is ambiguous or incomplete, state that clearly
+
+ADVICE MODE: If the user asks for 'advice', 'recommendations', or 'how they are doing', analyze their expense_log and provide 2 actionable savings tips. DO NOT offer to help track expenses or give advice further — wait for the user to request it.
 
 {state_context}"""
 
@@ -125,7 +131,7 @@ def update_state_node(state: SaveyState) -> dict:
                     "amount_gbp": float(fx_match.group(1))
                 })
 
-        if msg.name == "retrieve_total_expenses" and not currency_converted_this_round:
+        elif msg.name == "retrieve_total_expenses" and not currency_converted_this_round:
             try:
                 amount_gbp = float(content)
                 if amount_gbp > 0:
