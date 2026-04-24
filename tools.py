@@ -2,35 +2,78 @@ import re
 import os
 import requests
 from datetime import date
-from statistics import mode, StatisticsError
+from statistics import StatisticsError
+from collections import Counter
 from langchain_core.tools import tool
 
+
+ITEM_STOPWORDS = {
+    "and", "or", "but", "then", "also", "today", "yesterday",
+    "only", "just", "a", "an", "the",
+}
+
+CONNECTORS = {
+    "and", "or", "but", "then", "also",
+}
+
+
 @tool
-def retrieve_total_expenses(text: str) -> str:
+def retrieve_total_expenses(text: str) -> float:
     """
     Parse a natural language expense message and return the total GBP amount.
-    Handles GBP (£) amounts only, including decimals (e.g. £4.50).
-    Use convert_to_gbp first for any non-GBP currency.
-    Returns 0.0 if no amounts are found.
+    Only handles GBP (£) amounts. Use convert_to_gbp first for other currencies.
+    Example input: 'Today I bought a £4 coffee and a £8 sandwich.'
     """
-    matches = re.findall(r"£(\d+(?:\.\d+)?)", text)
-    return str(round(sum(float(x) for x in matches), 2))
+    pattern = r"""
+        £                     # GBP symbol only
+        \s*                   # optional whitespace
+        (                     # capture numeric amount
+            (?:
+               \d{1,3}(?:,\d{3})+  # numbers with thousands separators
+                |\d+                # plain numbers
+            )
+            (?:\.\d+)?        # optional decimal part
+            |
+            \.\d+             # amounts like £.99
+        )
+    """
+    matches = re.findall(pattern, text, flags=re.VERBOSE)
+    return sum(float(x.replace(",", "")) for x in matches)
 
 
 @tool
 def retrieve_purchased_item(text: str) -> str:
     """
-    Parse a natural language expense message and return the most frequently purchased item.
-    If all items appear equally often, returns the last item mentioned.
-    Returns 'unknown' if no items can be parsed.
+    Parse a natural language expense message and return the most commonly purchased item.
+    Example input: 'Today I bought a £4 coffee and a £8 sandwich. Yesterday I only got a £4 coffee.'
     """
-    matches = re.findall(r"[£$]\d+(?:\.\d+)?\s+(\w+)", text)
-    if not matches:
+    pattern = r"""
+        [£$]\s*
+        (?:
+            (?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?
+            |
+            \.\d+
+        )
+        \s+
+        ([A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z][A-Za-z'-]*){0,2})
+    """
+    raw_matches = re.findall(pattern, text, flags=re.VERBOSE)
+    items = []
+    for match in raw_matches:
+        words = []
+        for word in match.lower().split():
+            cleaned = word.strip(".,!?;:")
+            if cleaned in CONNECTORS:
+                break
+            if cleaned not in ITEM_STOPWORDS:
+                words.append(cleaned)
+        if words:
+            items.append(" ".join(words))
+
+    if not items:
         return "unknown"
-    try:
-        return mode(matches)
-    except StatisticsError:
-        return matches[-1]
+
+    return Counter(items).most_common(1)[0][0]
 
 
 def _fetch_rate(currency: str, date: str) -> float:
@@ -48,10 +91,9 @@ def _fetch_rate(currency: str, date: str) -> float:
 @tool
 def convert_to_gbp(amount: float, currency: str, date: str) -> str:
     """
-    Convert a foreign currency amount to GBP.
+    Convert a foreign currency amount to GBP using live exchange rates.
     Use this whenever an expense is not already in GBP (£).
-    Supported currencies: USD, EUR, JPY, CAD, AUD, CHF.
-    Example: convert_to_gbp(20.0, 'USD') → '20.0 USD = £15.8 GBP'
+    Example: convert_to_gbp(20.0, 'USD', '2026-04-23') → '20.0 USD = £14.81 GBP'
     """
     try:
         rate = _fetch_rate(currency, date)
@@ -69,4 +111,3 @@ def get_today_date() -> str:
     like 'yesterday', 'last Monday', or 'three days ago'.
     """
     return date.today().strftime("%A, %d %B %Y")
-
