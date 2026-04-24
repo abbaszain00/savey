@@ -1,4 +1,6 @@
 langgraph
+langgraph-checkpoint
+langgraph-prebuilt
 langchain
 langchain-openai
 langchain-community
@@ -7,3 +9,5 @@ python-dotenv
 requests
 fastmcp
 mcp
+bcrypt
+psycopg2

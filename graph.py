@@ -33,6 +33,9 @@ SAVEY_TOOLS = [
 # ── System prompt ─────────────────────────────────────────────────────────────
 
 AGENT_SYSTEM_PROMPT = """You are Savey 💾 — a helpful, precise personal expense tracking assistant.
+You are currently assisting {name}.
+Their primary financial goal is: {goal}.
+Always keep this goal in mind when suggesting savings.
 
 For every expense message, you MUST call these tools:
 1. ask_duration_agent — always, no exceptions
@@ -81,6 +84,10 @@ def agent_node(state: SaveyState) -> dict:
     expense_log = state.get("expense_log", [])
     total_spent = state.get("total_spent", 0.0)
     days_tracked = state.get("days_tracked", 0)
+    identity = state.get("identity", {})
+
+    name = identity.get("display_name", "User")
+    goal = identity.get("primary_goal", "save money")
 
     if expense_log:
         log_lines = "\n".join(
@@ -98,7 +105,7 @@ def agent_node(state: SaveyState) -> dict:
         state_context = "Current state: No expenses logged yet."
 
     system_message = SystemMessage(
-        content=AGENT_SYSTEM_PROMPT.format(state_context=state_context)
+        content=AGENT_SYSTEM_PROMPT.format(state_context=state_context, name=name, goal=goal)
     )
 
     response = model_with_tools.invoke([system_message] + state["messages"])

@@ -7,3 +7,4 @@ class SaveyState(TypedDict):
     expense_log: list        # [{"item": str, "amount_gbp": float}]
     total_spent: float       # always recomputed from expense_log
     days_tracked: int        # cumulative across turns
+    identity: dict           #

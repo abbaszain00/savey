@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import AIMessage
 
 from graph import savey
+from database import authenticate_and_load_user
 
 import logging
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -12,7 +13,9 @@ load_dotenv()
 
 def chat():
     session_id = str(uuid.uuid4())
-    config = {"configurable": {"thread_id": session_id}}
+    user_data = authenticate_and_load_user("savey", "savey")[0]
+    config = {"configurable": {"thread_id": session_id, "user_id": user_data["user_id"]}}
+    savey.update_state(config, {"identity": user_data["identity"]})
     is_first_turn = True
 
     print(f"\n💾 Savey is ready! (session: {session_id[:8]}...)")

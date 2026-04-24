@@ -5,6 +5,8 @@ from datetime import date
 from statistics import StatisticsError
 from collections import Counter
 from langchain_core.tools import tool
+from langchain_core.runnables import RunnableConfig
+from database import get_db_connection
 
 
 ITEM_STOPWORDS = {
@@ -111,3 +113,30 @@ def get_today_date() -> str:
     like 'yesterday', 'last Monday', or 'three days ago'.
     """
     return date.today().strftime("%A, %d %B %Y")
+
+
+@tool
+def query_user_history(query_key: str, config: RunnableConfig):
+    """
+    Look up specific past information or preferences from long-term memory.
+    Use this if you encounter a merchant, goal, or preference you don't recognize.
+    """
+    # Extract the user_id from the config (passed by the backend, not the LLM)
+    user_id = config.get("configurable", {}).get("user_id")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # We use the ->> operator to find specific keys in the context_json
+    # Or a more general search if needed.
+    sql = "SELECT context_json->>%s FROM users WHERE id = %s"
+
+    cur.execute(sql, (query_key, user_id))
+    result = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if result and result[0]:
+        return f"Context found for {query_key}: {result[0]}"
+    return f"No prior context found for {query_key}."
