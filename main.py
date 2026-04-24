@@ -1,22 +1,43 @@
 import uuid
+import logging
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage
 
 from graph import savey
 
-import logging
+load_dotenv()
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-load_dotenv()
+
+def login() -> str:
+    """
+    Placeholder login function.
+    Returns a user_id string.
+    When the memory team pushes their branch, replace this with their auth function.
+    """
+    print("\n💾 Welcome to Savey!")
+    username = input("Username: ").strip()
+    password = input("Password: ").strip()
+
+    # TODO: replace with memory team's auth function
+    # from memory import authenticate
+    # user_id = authenticate(username, password)
+    
+    # For now, use username as user_id
+    user_id = username
+    return user_id
 
 
 def chat():
-    session_id = str(uuid.uuid4())
-    config = {"configurable": {"thread_id": session_id}}
+    user_id = login()
+    if not user_id:
+        print("Login failed.")
+        return
+
+    config = {"configurable": {"thread_id": user_id}}
     is_first_turn = True
 
-    print(f"\n💾 Savey is ready! (session: {session_id[:8]}...)")
-    print("Type 'exit' to quit, '/state' to see your expense summary.\n")
+    print(f"\nHello, {user_id}! Type 'exit' to quit, '/state' to see your expense summary.\n")
 
     while True:
         user_input = input("You: ").strip()
